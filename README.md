@@ -6,5 +6,5 @@ Code and resources in conjunction with Dr Mariana Lyra lecture
 
 More data and scripts from the published paper can be found: 
 ```
-[marilyra/Ptychadena_biogeography](https://github.com/marilyra/Ptychadena_biogeography)
+https://github.com/marilyra/Ptychadena_biogeography
 ```
