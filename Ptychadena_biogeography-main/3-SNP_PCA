@@ -1,0 +1,54 @@
+# computational pipelines used for principal component analysis (PCA) of SNP data
+
+##########Bioinformatic tools#####################
+
+Program:VCFtools  
+Version: 0.1.16
+Webpage: https://vcftools.github.io/man_latest.html
+References: Danecek, P., Auton, A., Abecasis, G., Albers, C. A., Banks, E., DePristo, M. A., Handsaker, R. E., Lunter, G., Marth, G. T., Sherry, S. T., McVean, G., and Durbin, R. (2011). The variant call format and VCFtools. Bioinformatics, 27(15), 2156–2158. 
+
+Program: plink
+Version: 1.9
+Webpage: https://www.cog-genomics.org/plink/
+References: Purcell, S., Neale, B., Todd-Brown, K., Thomas, L., Ferreira, M.A., Bender, D., Maller, J., Sklar, P., De Bakker, P.I., Daly, M.J. and Sham, P.C. (2007). PLINK: a tool set for whole-genome association and population-based linkage analyses. The American journal of human genetics, 81(3), pp.559-575
+
+Program: R 
+Version: 4.2.1 (2022-06-23)
+Webpage: https://www.r-project.org/
+References: R Development Core Team (2022) R: A language and environment for statistical computing. Vienna, Austria: R Foundation for Statistical Computing. 
+
+-----------
+
+# 1 filtering with VCFtools
+
+vcftools --gzvcf {specie}_genotype.vcf --remove-indels --maf 0.05 --max-missing 0.99  --minQ 30 --recode --stdout | gzip -c > {specie}_M5Miss1.vcf.gz
+
+# 2 PCA
+plink --vcf {specie}_M5Miss1.vcf.gz --double-id --allow-extra-chr --set-missing-var-ids @:# \
+--pca --out {specie}_M5Miss1_pca
+
+# 3 plot - Example
+
+library(ggplot2)
+
+matrix <- read_table("./{specie_PCA}.eigenvec", col_names = FALSE)
+pcaeigenval <- scan("./{specie_PCA}.eigenval")
+pca <- matrix[,-1]
+
+names(pca)[1] <- "ind"
+names(pca)[2:ncol(pca)] <- paste0("PC", 1:(ncol(pca)-1))
+pca
+
+pve <- data.frame(PC = 1:(ncol(pca)-1), pve = pcaeigenval/sum(pcaeigenval)*100)
+cumsum(pve$pve)
+pve
+
+
+pop=c("pop1","pop2"....) #should be defined considering {specie_PCA}
+
+D <- ggplot(pca, aes(PC1, PC2, label = TRUE, fill=pop)) + geom_point(size = 8, shape = 21)
+D + xlab(paste0("PC1 (", signif(pve$pve[1], 3), "%)")) + ylab(paste0("PC2 (", signif(pve$pve[2], 3), "%)"))
+ls
+D
+
+#size, shape and color anf fill should be defined considering {specie_PCA}

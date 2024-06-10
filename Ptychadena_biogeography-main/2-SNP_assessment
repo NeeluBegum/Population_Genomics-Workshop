@@ -1,0 +1,151 @@
+# computational pipelines used for single nucleotide polymorphisms (SNPs) assessment
+
+##########Bioinformatic tools#####################
+
+
+BWA-mem short read alignment approach (Li and Durbin, 2011). 
+Samtools (version 1.3.1; Li et al., 2009) and 
+Picard (version 2.5.0, http://broadinstitute.github.io/picard) 
+GATK HaplotypeCaller (Poplin et al., 2017) 
+
+
+Program: bwa (alignment via Burrows-Wheeler transformation)
+Version: 0.7.17-r1188
+Webpage:https://github.com/lh3/bwa
+References: Li H. and Durbin R. (2009) Fast and accurate short read alignment with Burrows-Wheeler transform. Bioinformatics, 25, 1754-1760.
+            Li H. (2013) Aligning sequence reads, clone sequences and assembly contigs with BWA-MEM. arXiv:1303.3997v2 [q-bio.GN]. (if you use the BWA-MEM algorithm or the fastmap command, or want to cite the whole BWA package)
+
+Program: samtools (alignments in the SAM format)
+Version: 1.9 (using htslib 1.9)
+Webpage: https://github.com/samtools/samtools
+Reference: Danecek, P., Bonfield, J.K., Liddle, J., Marshall, J., Ohan, V., Pollard, M.O., Whitwham, A., Keane, T., McCarthy, S.A., Davies, R.M., and Li, H. (2021) Twelve years of SAMtools and BCFtools. GigaScience, 10(2):giab008, https://doi.org/10.1093/gigascience/giab008
+
+
+Program: picard (tools for manipulating high-throughput sequencing data and formats)
+Version: 2.21.1
+Webpage: https://github.com/broadinstitute/picard
+Reference:"Picard Toolkit.” 2019. Broad Institute, GitHub Repository. https://broadinstitute.github.io/picard/; Broad Institute"
+
+Program:gatk
+Version: :3.8
+Webpage: https://gatk.broadinstitute.org/hc/en-us
+Reference: McKenna A, Hanna M, Banks E, Sivachenko A, Cibulskis K, Kernytsky A, Garimella K, Altshuler D, Gabriel S, Daly M, DePristo MA. (2010). The Genome Analysis Toolkit: a MapReduce framework for analyzing next-generation DNA sequencing data. Genome Res, 20:1297-303. DOI: 10.1101/gr.107524.110.
+           DePristo M, Banks E, Poplin R, Garimella K, Maguire J, Hartl C, Philippakis A, del Angel G, Rivas MA, Hanna M, McKenna A, Fennell T, Kernytsky A, Sivachenko A, Cibulskis K, Gabriel S, Altshuler D, Daly M. (2011). A framework for variation discovery and genotyping using next-generation DNA sequencing data. Nat Genet, 43:491-498. DOI: 10.1038/ng.806.
+           Poplin R, Ruano-Rubio V, DePristo MA, Fennell TJ, Carneiro MO, Van der Auwera GA, Kling DE, Gauthier LD, Levy-Moonshine A, Roazen D, Shakir K, Thibault J, Chandran S, Whelan C, Lek M, Gabriel S, Daly MJ, Neale B, MacArthur DG, Banks E. (2017). Scaling accurate genetic variant discovery to tens of thousands of samples bioRxiv, 201178. DOI: 10.1101/201178
+---------
+#global information
+
+# Analysis Directories
+    - bwa_mem_dir: "data/analysis/{$sample}/bwa_mem"
+    - samtools_dir: "data/analysis/{$sample}/samtools"
+    - picard_dir: "data/analysis/{$sample}/picard"
+    - gatk_dir:   "data/analysis/{$sample}/gatk"
+
+# Reference Data
+    - bwa_mem_reference: "~/Ptychadena_robeensis2.0"
+    - reference: "{$self->bwa_mem_reference}.fa"
+
+# Shortcuts for long read names
+    - READ1: "{sample}_trimmed_R1.fastq.gz"
+    - READ2: "{sample}_trimmed_R2.fastq.gz"
+# HPC:  - mem: '55GB'
+       - cpus_per_task: '1' (exceptions are in command lines)
+    
+----------
+# commands to align quality trimmed reads to the 'Ptychadena robeensis' reference genome and convert files
+
+## 1 bwa:
+    - OUTPUT: "{$self->bwa_mem_dir}/{$sample}_aligned.sam"
+
+$ bwa mem -t 14 -M {$self->bwa_mem_reference} {$self->READ1} {$self->READ2} > {$self->OUTPUT}
+
+## 2 samtools:
+    - INPUT: "{$self->bwa_mem_dir}/{$sample}_aligned.sam"
+    - OUTPUT: "{$self->samtools_dir}/{$sample}_aligned.bam"
+    - deps: 'bwa_mem'
+
+$ samtools view -b -S {$self->INPUT} > {$self->OUTPUT}
+    
+###remove_SAM:
+    
+$ rm -rf {$self->INPUT}             
+                              
+
+## 3 picard:
+     - deps: 'samtools_view'
+     
+##picard_sortsam
+ 	 - indir: "{$self->samtools_dir}"
+   - outdir: "{$self->picard_dir}"
+   - INPUT: "{$self->samtools_dir}/{$sample}_aligned.bam"
+   - OUTPUT: "{$self->picard_dir}/{$sample}_csorted.cleaned.aligned.bam"
+
+$ picard -Xmx40g  SortSam  INPUT={$self->INPUT} O={$self->OUTPUT} SO=coordinate TMP_DIR={$self->bwa_mem_tmp_dir}
+
+##picard_collect_multiple_metrics:
+    - INPUT: "{$self->picard_dir}/{$sample}_csorted.cleaned.aligned.bam"
+    - OUTPUT: "{$self->picard_dir}/{$sample}_collmulmetr.csorted.cleaned.aligned"
+    - PROGRAM: "PROGRAM=CollectAlignmentSummaryMetrics PROGRAM=CollectInsertSizeMetrics PROGRAM=QualityScoreDistribution PROGRAM=MeanQualityByCycle"
+    - deps: 'picard_sortsam'
+ 
+$ picard -Xmx40g CollectMultipleMetrics TMP_DIR={$self->bwa_mem_tmp_dir} I={$self->INPUT} O={$self->OUTPUT} {$self->PROGRAM}
+                                        
+                    
+## picard_add_or_replace_groups:
+	- INPUT: "{$self->picard_dir}/{$sample}_csorted.cleaned.aligned.bam"
+    - OUTPUT: "{$self->picard_dir}/{$sample}_withrg.csorted.cleaned.aligned.bam"
+    - ARGS: "SORT_ORDER=coordinate RGID=1 RGLB={$self->library} RGPL=illumina RGPU=unit1 RGSM={$sample} RGCN=NYUAD"
+    - deps: 'picard_sortsam'
+    
+$ picard -Xmx40g AddOrReplaceReadGroups I={$self->INPUT} O={$self->OUTPUT} {$self->ARGS}
+
+## picard_bamindex:
+    - INPUT: "{$self->picard_dir}/{$sample}_withrg.csorted.cleaned.aligned.bam"
+    - OUTPUT: "{$self->picard_dir}/{$sample}_withrg.csorted.cleaned.aligned.bam"
+    - deps: 'picard_add_or_replace_groups'
+
+$ picard -Xmx40g BuildBamIndex I={$self->INPUT} TMP_DIR={$self->bwa_mem_tmp_dir}
+
+## markdups:
+    - INPUT: "{$self->picard_dir}/{$sample}_withrg.csorted.cleaned.aligned.bam"
+    - OUTPUT: "{$self->picard_dir}/{$sample}_mdup.withrg.csorted.cleaned.aligned.bam"
+    - metrics_file: "{$self->picard_dir}/{$sample}_markDup_metrics.txt"
+    - deps: 'picard_bamindex'
+                
+$ picard -Xmx80g MarkDuplicates M={$self->metrics_file}  I={$self->INPUT} O={$self->OUTPUT} MAX_FILE_HANDLES_FOR_READ_ENDS_MAP=100 TMP_DIR={$self->bwa_mem_tmp_dir}
+
+
+## picard_bamindex2:
+    - INPUT: "{$self->picard_dir}/{$sample}_mdup.withrg.csorted.cleaned.aligned.bam"
+    - deps: 'picard_markdups'
+
+$ picard -Xmx40g BuildBamIndex I={$self->INPUT} TMP_DIR={$self->bwa_mem_tmp_dir}
+                                     
+## 4 gatk_haplotypecaller:
+
+##haplotypecaller:
+    - gatk_args: library: 1; pcrModel: 0; goldenVcf: 0; ploidy: 2
+    - INPUT: "{$self->picard_dir}/{$sample}_mdup.withrg.csorted.cleaned.aligned.bam"
+    - OUTPUT: "{$self->gatk_dir}/{$sample}_haplotype_withrg.csorted.cleaned.aligned.g.vcf"
+    - ARGS: "-stand_emit_conf 10 -stand_call_conf 30 --genotyping_mode DISCOVERY"
+    - deps: 'picard_bamindex2'
+
+$ java -jar ~/gatk-3.8/GenomeAnalysisTK.jar -T HaplotypeCaller -R {$self->reference} -nct 24 -ERC GVCF {$self->ARGS} -I {$self->INPUT} -o {$self->OUTPUT}
+
+
+-----------
+
+
+## commands to combine and genotype samples
+
+## 5 gatk_combine_genotype:
+
+- LIST_OF_SAMPLES: selected samples in {$sample}_haplotype_withrg.csorted.cleaned.aligned.g.vcf
+
+$ java -Xmx400g -jar ~/gatk-3.8/GenomeAnalysisTK.jar -T CombineGVCFs \
+               -R ~/reference/Ptychadena_robeensis2.0.fa 
+               -o combine.vcf --variant LIST_OF_SAMPLES
+
+$ java -Xmx400g -jar ~/gatk-3.8/GenomeAnalysisTK.jar -T GenotypeGVCFs \
+              -R ~/reference/Ptychadena_robeensis2.0.fa \
+              -o genotype.vcf --variant combine.vcf

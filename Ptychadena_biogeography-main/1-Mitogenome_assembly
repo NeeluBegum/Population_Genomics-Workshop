@@ -1,0 +1,53 @@
+
+# computational pipelines used for mitogenome assembly
+
+
+##########Bioinformatic tools
+
+#trimmomatic
+#Version:Trimmomatic V0.39
+#Webpage: http://www.usadellab.org/cms/index.php?page=trimmomatic
+#Reference: Bolger, A.M., Lohse, M., & Usadel, B. (2014). Trimmomatic: A flexible trimmer for Illumina Sequence Data. Bioinformatics, 30(15):2114-20. btu170.
+
+#SeqTK
+#Version: Seqtk V1.3 
+#Webpage: https://github.com/lh3/seqtk. (Accessed January 2022)
+#Reference: Li, H. (2018) Seqtk: a fast and lightweight tool for processing FASTA or FASTQ sequences. (Available from: https://github.com/lh3/seqtk).
+
+
+
+#GetOrganelle
+#Version: GetOrganelle v1.7.5
+#Webpage: https://github.com/Kinggerm/GetOrganelle (Acessed January 2023)
+#Reference: Jin, J.J., Yu, W.B., Yang, J.B., Song, Y.,  dePamphilis, C.W., Yi, T.-S., and Li, D.-Z. (2020) GetOrganelle: a fast and versatile toolkit for accurate de novo assembly of organelle genomes. Genome Biol 21, 241.
+##GetOrganelle dependencies:
+##SPAdes: Bankevich, A., S. Nurk, D. Antipov, A. A. Gurevich, M. Dvorkin, A. S. Kulikov, V. M. Lesin, S. I. Nikolenko, S. Pham, A. D. Prjibelski, A. V. Pyshkin, A. V. Sirotkin, N. Vyahhi, G. Tesler, M. A. Alekseyev and P. A. Pevzner. 2012. SPAdes: a new genome assembly algorithm and its applications to single-cell sequencing. Journal of Computational Biology 19: 455-477.
+##Bowtie2: Langmead, B. and S. L. Salzberg. 2012. Fast gapped-read alignment with Bowtie 2. Nature Methods 9: 357-359.
+##BLAST+: Camacho, C., G. Coulouris, V. Avagyan, N. Ma, J. Papadopoulos, K. Bealer and T. L. Madden. 2009. BLAST+: architecture and applications. BMC Bioinformatics 10: 421.
+##Bandage: Wick, R. R., M. B. Schultz, J. Zobel and K. E. Holt. 2015. Bandage: interactive visualization of de novo genome assemblies. Bioinformatics 31: 3350-3352.
+
+1- Trimming samples
+
+##Command line
+
+$ trimmomatic PE  {sample}_R1.fastq {sample}_R2.fastq {sample}_trimmed_R1.fastq {sample}_trimmed_R1_unpaired.fastq {sample}_trimmed_R2.fastq {sample}_trimmed_R2_unpaired.fastq ILLUMINACLIP:~/adapters.fa:2:30:10 SLIDINGWINDOW:4:30 LEADING:3 TRAILING:3 MINLEN:70
+
+#Remove adapters (ILLUMINACLIP:adapters.fa:2:30:10)
+#Remove leading low quality or N bases (below quality 3) (LEADING:3)
+#Remove trailing low quality or N bases (below quality 3) (TRAILING:3)
+#Scan the read with a 4-base wide sliding window, cutting when the average quality per base drops below 30 (SLIDINGWINDOW:4:30)
+# Drop reads below the 70 bases long (MINLEN:70)
+
+
+2- subsampling 10 million reads per sample
+
+##Command line
+seqtk sample -s100 {sample}_trimmed_R1.fastq 10000000 > {sample}_trimmed_R1.fastq_sub10M_R1.fq
+seqtk sample -s100 {sample}_trimmed_R2.fastq 10000000 > {sample}_trimmed_R1.fastq_sub10M_R2.fq
+
+
+3- Assembling mitogenomes
+
+get_organelle_from_reads.py --reduce-reads-for-coverage inf --max-reads inf -t 4 -1 {sample}_trimmed_R1.fastq_sub10M_R1.fq -2 {sample}_trimmed_R1.fastq_sub10M_R2.fq -R 15 -k 21,55,85,105 -F animal_mt -o {sample}_getOrganelle_results
+
+# Use all 10M PE reads (--reduce-reads-for-coverage inf --max-reads inf)
